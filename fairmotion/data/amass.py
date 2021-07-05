@@ -127,7 +127,7 @@ def load_body_model(bm_path, num_betas=10, model_type="smplh"):
     bm = BodyModel(
         bm_path=bm_path, 
         num_betas=num_betas, 
-        # model_type=model_type
+        model_type=model_type
     ).to(comp_device)
     return bm
 
