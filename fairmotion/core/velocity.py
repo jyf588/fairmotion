@@ -3,7 +3,7 @@
 import numpy as np
 
 from fairmotion.utils import constants
-from fairmotion.ops import conversions, math
+from fairmotion.ops import conversions, math, quaternion
 from fairmotion.core.motion import Pose, Motion
 
 
@@ -39,6 +39,14 @@ class Velocity(object):
 
     @classmethod
     def compute(cls, pose1, pose2, dt):
+        def T_diff(T1, T2):
+            Q1, p1 = conversions.T2Qp(T1)
+            Q2, p2 = conversions.T2Qp(T2)
+            v = (p2 - p1) / dt
+            Q_d = quaternion.Q_diff(Q1, Q2)
+            w = conversions.Q2A(Q_d) / dt
+            return v, w
+
         assert pose1.skel == pose2.skel
         data_local = []
         data_global = []
@@ -46,14 +54,38 @@ class Velocity(object):
         for joint in pose1.skel.joints:
             T1 = pose1.get_transform(joint, local=True)
             T2 = pose2.get_transform(joint, local=True)
-            dR, dp = conversions.T2Rp(np.dot(math.invertT(T1), T2))
-            w, v = conversions.R2A(dR) / dt, dp / dt
+            v, w = T_diff(T1, T2)
             data_local.append(np.hstack((w, v)))
             T1 = pose1.get_transform(joint, local=False)
             T2 = pose2.get_transform(joint, local=False)
-            dR, dp = conversions.T2Rp(np.dot(math.invertT(T1), T2))
-            w, v = conversions.R2A(dR) / dt, dp / dt
+            v, w = T_diff(T1, T2)
             data_global.append(np.hstack((w, v)))
+
+            # print("1 ", w)
+            #
+            # # import torchgeometry as tgm
+            # # tgm.core.angle_axis_to_rotation_matrix()
+            # from liegroups.torch import SO3
+            # import torch
+            #
+            # R1 = torch.tensor(conversions.T2Rp(T1)[0], requires_grad=True)
+            # R2 = torch.tensor(conversions.T2Rp(T2)[0], requires_grad=True)
+            # R_diff = torch.matmul(torch.transpose(R1, 0, 1), R2)
+            # w_tmp = SO3.log(SO3.from_matrix(R_diff)) / dt
+            # print("2 ", w_tmp)
+
+            # R1, _ = conversions.T2Rp(T1)
+            # R2, _ = conversions.T2Rp(T2)
+            # A1 = conversions.R2A(R1)
+            # A2 = conversions.R2A(R2)
+            # r1 = np.linalg.norm(A1)
+            # r2 = np.linalg.norm(A2)
+            #
+            # w_tmp = 2 * np.arccos(np.abs(np.cos(r1/2) * np.cos(r2/2)
+            #                              - np.sin(r1/2) * np.sin(r2/2) * np.inner(A1, A2) / (r1 * r2)))
+            # print("2 ", w_tmp / dt)
+
+
         return np.array(data_local), np.array(data_global)
 
     def get_all(self, key, local, R_ref=None):
@@ -153,13 +185,14 @@ class MotionWithVelocity(Motion):
         if frame_end is None:
             frame_end = self.num_frames()
         for i in range(frame_start, frame_end):
-            frame1 = max(0, (i - 1))
+            frame1 = max(0, i - 1)
             frame2 = min(self.num_frames() - 1, (i + 1))
             dt = (frame2 - frame1) / float(self.fps)
             pose1 = self.get_pose_by_frame(frame1)
             pose2 = self.get_pose_by_frame(frame2)
             vels.append(Velocity(pose1, pose2, dt))
             # print(vels[-1].get_linear('root', local=True))
+        # vels.append(vels[-1])
         return vels
 
     def get_velocity_by_time(self, time):

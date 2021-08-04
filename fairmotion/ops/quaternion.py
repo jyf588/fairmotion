@@ -46,16 +46,32 @@ def Q_op(Q, op, xyzw_in=True):
 
 
 def Q_diff(Q1, Q2):
-    raise NotImplementedError
+    """
+    Q1, Q2 array like (N,4) or (4,)
+    return Q2 - Q1
+    """
+    Q1_inv = Q1 * np.array([-1., -1, -1, 1])    # broadcasting when 2D
+    return Q_mult(Q1_inv, Q2)
 
 
 def Q_mult(Q1, Q2):
     """
     Multiply two quaternions.
+    Q1, Q2 array like (N,4) or (4,)
     """
-    R1 = Rotation.from_quat(Q1)
-    R2 = Rotation.from_quat(Q2)
-    return (R1 * R2).as_quat()
+    # R1 = Rotation.from_quat(Q1)
+    # R2 = Rotation.from_quat(Q2)
+    # return (R1 * R2).as_quat()
+
+    # in scalar-last order
+    # fair motion used RotMatrix multiply, which might not be stable
+    ax, ay, az, aw = Q1.T       # .T no effect when 1D
+    bx, by, bz, bw = Q2.T
+    ow = aw * bw - ax * bx - ay * by - az * bz
+    ox = aw * bx + ax * bw + ay * bz - az * by
+    oy = aw * by - ax * bz + ay * bw + az * bx
+    oz = aw * bz + ax * by - ay * bx + az * bw
+    return np.array([ox, oy, oz, ow]).T
 
 
 def Q_closest(Q1, Q2, axis):
